@@ -2,12 +2,6 @@
 
 Aplicacao full stack com autenticacao, painel administrativo e CRUD de usuarios.
 
-## Deploy
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/gustavo-oli-dev/SistemaLogin)
-
-> Clique no botao acima, faca login no Render e o projeto sobe automaticamente.
-
 ## Acessar projeto
 
 [Abrir aplicacao](https://sistemalogin-hot0.onrender.com)
