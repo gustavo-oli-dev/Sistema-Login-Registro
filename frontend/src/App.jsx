@@ -1,30 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
+import Toast from './components/Toast';
 
 function App() {
   const [modo, setModo] = useState('login');
   const [usuario, setUsuario] = useState(null);
-  const [mensagem, setMensagem] = useState('');
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     localStorage.removeItem('usuario');
     localStorage.removeItem('token');
-    setUsuario(null);
-    setModo('login');
+  }, []);
+
+  const notify = useCallback((mensagem, tipo = 'sucesso') => {
+    setToast({ mensagem, tipo });
+    setTimeout(() => setToast(null), 3500);
   }, []);
 
   const handleLoginSucesso = (usuarioData) => {
     setUsuario(usuarioData);
     setModo('dashboard');
-    setMensagem('');
   };
 
   const handleRegistroSucesso = (usuarioData) => {
     setUsuario(usuarioData);
     setModo('dashboard');
-    setMensagem('');
+    notify('Conta criada com sucesso!');
   };
 
   const handleLogout = () => {
@@ -32,52 +35,29 @@ function App() {
     localStorage.removeItem('token');
     setUsuario(null);
     setModo('login');
-    setMensagem('');
   };
 
   const handleUsuarioAtualizado = (usuarioAtualizado) => {
     setUsuario(usuarioAtualizado);
   };
 
-  function renderConteudo() {
-    if (modo === 'dashboard' && usuario) {
-      return (
+  return (
+    <div className="app">
+      {toast && (
+        <Toast mensagem={toast.mensagem} tipo={toast.tipo} onClose={() => setToast(null)} />
+      )}
+      {modo === 'dashboard' && usuario ? (
         <Dashboard
           usuario={usuario}
           onLogout={handleLogout}
           onUsuarioAtualizado={handleUsuarioAtualizado}
+          notify={notify}
         />
-      );
-    }
-
-    if (modo === 'register') {
-      return (
-        <>
-          {mensagem && <div className="mensagem-sucesso">{mensagem}</div>}
-          <Register onSuccess={handleRegistroSucesso} onSwitchMode={() => { setModo('login'); setMensagem(''); }} />
-        </>
-      );
-    }
-
-    return (
-      <>
-        {mensagem && <div className="mensagem-sucesso">{mensagem}</div>}
-        <Login
-          onSuccess={handleLoginSucesso}
-          onSwitchMode={() => setModo('register')}
-        />
-      </>
-    );
-  }
-
-  return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Sistema de Registro & Login</h1>
-      </header>
-      <main className="app-main">
-        {renderConteudo()}
-      </main>
+      ) : modo === 'register' ? (
+        <Register onSuccess={handleRegistroSucesso} onSwitchMode={() => setModo('login')} />
+      ) : (
+        <Login onSuccess={handleLoginSucesso} onSwitchMode={() => setModo('register')} />
+      )}
     </div>
   );
 }

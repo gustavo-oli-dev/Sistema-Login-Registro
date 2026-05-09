@@ -13,7 +13,7 @@ echo Iniciando Backend (Flask) e Frontend (React)...
 echo.
 
 REM Iniciar Backend em uma nova janela
-start cmd /k "cd backend && python app.py"
+start cmd /k "cd api && python index.py"
 
 REM Aguardar um pouco para o backend iniciar
 timeout /t 3 /nobreak

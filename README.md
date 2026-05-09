@@ -1,63 +1,90 @@
 # Sistema de Login & Registro
 
-Aplicacao full stack com autenticacao, painel administrativo e CRUD de usuarios.
+Aplicação fullstack de autenticação com painel administrativo.
 
-## Acessar projeto
+## Stack
 
-[Abrir aplicacao](https://sistemalogin-hot0.onrender.com)
+- **Backend:** Python · Flask · Werkzeug (hash de senhas)
+- **Frontend:** React 18 · Axios · Chart.js
 
-## Estrutura
+## Como rodar localmente
 
-- `backend/` — API Flask (porta `5000`)
-- `frontend/` — interface React (porta `3000`)
-
-## Funcionalidades
-
-### Backend
-- Registro de novos usuarios
-- Login com validacao
-- CRUD completo de usuarios
-- API REST
-- Senhas com hash
-
-### Frontend
-- Tela de login
-- Tela de cadastro
-- Dashboard do usuario
-- Graficos com Chart.js
-- Tabela de usuarios cadastrados
-- Edicao de perfil
-- Exclusao de usuarios por administrador
-
-## Como executar localmente
-
-### Opcao rapida (Windows)
-Clique 2x no arquivo `start.bat` — abre o backend, o frontend e o navegador automaticamente.
-
-### Manual
+### 1. Instalar dependências do backend (uma vez)
 
 ```bash
-# Terminal 1 — Backend
-cd backend
-venv\Scripts\activate
-python app.py
+cd api
+pip install flask flask-cors werkzeug
+```
 
-# Terminal 2 — Frontend
+### 2. Instalar dependências do frontend (uma vez)
+
+```bash
 cd frontend
 npm install
+```
+
+### 3. Iniciar
+
+**Opção A — um clique:**
+Dê duplo clique no arquivo `start.bat` na raiz do projeto.
+
+**Opção B — manual (dois terminais):**
+
+```bash
+# Terminal 1 - Backend
+cd api
+python index.py
+```
+
+```bash
+# Terminal 2 - Frontend
+cd frontend
 npm start
 ```
 
-Acesse em `http://localhost:3000`
+| Serviço  | URL                   |
+|----------|-----------------------|
+| Frontend | http://localhost:3000 |
+| Backend  | http://localhost:5000 |
 
-## Endpoints da API
+## Credenciais padrão
 
-| Metodo | Rota | Descricao |
-|--------|------|-----------|
-| POST | `/api/auth/register` | Registrar usuario |
-| POST | `/api/auth/login` | Login |
-| GET | `/api/usuarios` | Listar usuarios |
-| GET | `/api/estatisticas` | Estatisticas |
-| PUT | `/api/usuarios/<id>` | Atualizar usuario |
-| DELETE | `/api/usuarios/<id>` | Deletar usuario |
-| GET | `/api/health` | Status da API |
+| Campo | Valor           |
+|-------|-----------------|
+| Email | admin@gmail.com |
+| Senha | 1234            |
+
+> O banco de dados é **em memória** — os dados são resetados ao reiniciar o backend.
+
+## Funcionalidades
+
+- Registro de usuário com confirmação de senha
+- Login com validação
+- Dashboard com estatísticas e gráficos
+- Edição de perfil (nome, email, senha)
+- Painel admin: listar usuários, alterar cargo (admin/usuário), deletar usuário
+- Notificações toast em vez de `alert()`
+
+## Estrutura
+
+```
+sistema-login-register/
+├── api/
+│   ├── index.py          # API Flask
+│   └── requirements.txt
+├── frontend/
+│   └── src/
+│       ├── App.jsx
+│       ├── components/
+│       │   ├── Login.jsx
+│       │   ├── Register.jsx
+│       │   ├── Dashboard.jsx
+│       │   └── Toast.jsx
+│       └── config/api.js
+└── start.bat             # Inicia tudo com duplo clique
+```
+
+## Deploy
+
+O projeto está configurado para deploy no **Vercel** (frontend) + **Render** (backend).
+Consulte `DEPLOY.md` para instruções detalhadas.

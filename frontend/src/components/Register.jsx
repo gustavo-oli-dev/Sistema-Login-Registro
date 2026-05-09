@@ -4,21 +4,17 @@ import './Auth.css';
 import { API_URL } from '../config/api';
 
 function Register({ onSuccess, onSwitchMode }) {
-  const [formData, setFormData] = useState({
-    nome: '',
-    email: '',
-    senha: ''
-  });
+  const [formData, setFormData] = useState({ nome: '', email: '', senha: '', confirmarSenha: '' });
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    const sanitizedValue = name === 'senha' ? value.replace(/\s/g, '') : value;
+    const senhaFields = ['senha', 'confirmarSenha'];
     setFormData(prev => ({
       ...prev,
-      [name]: sanitizedValue
+      [name]: senhaFields.includes(name) ? value.replace(/\s/g, '') : value,
     }));
   };
 
@@ -26,28 +22,25 @@ function Register({ onSuccess, onSwitchMode }) {
     e.preventDefault();
     setErro('');
 
-    if (/\s/.test(formData.senha)) {
-      setErro('A senha nao pode conter espacos em branco');
-      return;
-    }
-
     if (formData.senha.length < 4) {
       setErro('A senha deve ter pelo menos 4 caracteres');
       return;
     }
 
+    if (formData.senha !== formData.confirmarSenha) {
+      setErro('As senhas não coincidem');
+      return;
+    }
+
     setCarregando(true);
     try {
-      const response = await axios.post(`${API_URL}/auth/register`, formData);
-      const usuarioComSenha = {
-        ...response.data.usuario,
+      const response = await axios.post(`${API_URL}/auth/register`, {
+        nome: formData.nome,
+        email: formData.email,
         senha: formData.senha,
-        is_admin: response.data.usuario?.is_admin || false
-      };
-      localStorage.setItem('usuario', JSON.stringify(usuarioComSenha));
+      });
       localStorage.setItem('token', 'logged-in');
-      setFormData({ nome: '', email: '', senha: '' });
-      onSuccess(usuarioComSenha);
+      onSuccess(response.data.usuario);
     } catch (err) {
       setErro(err.response?.data?.erro || 'Erro ao registrar');
     } finally {
@@ -56,59 +49,91 @@ function Register({ onSuccess, onSwitchMode }) {
   };
 
   return (
-    <div className="auth-container">
-      <h2>Registrar-se</h2>
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>Nome de usuario:</label>
-          <input
-            type="text"
-            name="nome"
-            value={formData.nome}
-            onChange={handleChange}
-            required
-          />
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-card-top">
+          <h1>Criar conta</h1>
+          <p>Preencha os dados abaixo para se registrar</p>
         </div>
-        <div className="form-group">
-          <label>Email:</label>
-          <input
-            type="email"
-            name="email"
-            value={formData.email}
-            onChange={handleChange}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label>Senha:</label>
-          <div className="password-input-wrapper">
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Nome de usuário</label>
             <input
-              type={mostrarSenha ? 'text' : 'password'}
-              name="senha"
-              value={formData.senha}
+              type="text"
+              name="nome"
+              value={formData.nome}
               onChange={handleChange}
-              minLength={4}
-              title="A senha deve ter pelo menos 4 caracteres"
+              placeholder="Seu nome"
               required
             />
-            <button
-              type="button"
-              className={`password-toggle-btn ${!mostrarSenha ? 'oculta' : ''}`}
-              onClick={() => setMostrarSenha(!mostrarSenha)}
-              title={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
-            >
-              <span className="eye-icon" aria-hidden="true" />
+          </div>
+
+          <div className="form-group">
+            <label>Email</label>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="seu@email.com"
+              required
+            />
+          </div>
+
+          <div className="form-divider"><span>Segurança</span></div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Senha</label>
+              <div className="password-input-wrapper">
+                <input
+                  type={mostrarSenha ? 'text' : 'password'}
+                  name="senha"
+                  value={formData.senha}
+                  onChange={handleChange}
+                  placeholder="Mín. 4 caracteres"
+                  minLength={4}
+                  required
+                />
+                <button
+                  type="button"
+                  className={`password-toggle-btn ${!mostrarSenha ? 'oculta' : ''}`}
+                  onClick={() => setMostrarSenha(v => !v)}
+                  title={mostrarSenha ? 'Ocultar' : 'Mostrar'}
+                >
+                  <span className="eye-icon" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Confirmar senha</label>
+              <div className="password-input-wrapper">
+                <input
+                  type={mostrarSenha ? 'text' : 'password'}
+                  name="confirmarSenha"
+                  value={formData.confirmarSenha}
+                  onChange={handleChange}
+                  placeholder="Repita a senha"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          {erro && <div className="erro">{erro}</div>}
+
+          <div className="btn-row">
+            <button type="button" onClick={onSwitchMode} className="btn-secondary">
+              Já tenho conta
+            </button>
+            <button type="submit" className="btn-primary" disabled={carregando}>
+              {carregando ? 'Criando...' : 'Criar conta'}
             </button>
           </div>
-        </div>
-        {erro && <div className="erro">{erro}</div>}
-        <button type="submit" disabled={carregando}>
-          {carregando ? 'Registrando...' : 'Registrar'}
-        </button>
-        <button type="button" onClick={onSwitchMode} className="switch-btn">
-          Voltar
-        </button>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }

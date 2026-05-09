@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 
 from flask import Flask, jsonify, request
@@ -84,6 +84,7 @@ def register():
             'id': new_user['id'],
             'nome': new_user['nome'],
             'email': new_user['email'],
+            'is_admin': new_user['is_admin'],
         }
     }), 201
 
@@ -169,12 +170,24 @@ def atualizar_usuario(user_id):
                 return jsonify({'erro': 'Email já está em uso'}), 400
             user['email'] = novo_email
 
+    if 'senha' in data:
+        nova_senha = data['senha']
+        if password_is_too_short(nova_senha):
+            return jsonify({'erro': f'Senha deve ter no mínimo {MIN_PASSWORD_LENGTH} caracteres'}), 400
+        if password_has_whitespace(nova_senha):
+            return jsonify({'erro': 'Senha não pode conter espaços'}), 400
+        user['senha'] = generate_password_hash(nova_senha)
+
+    if 'is_admin' in data and not is_main_admin(user):
+        user['is_admin'] = bool(data['is_admin'])
+
     return jsonify({
         'mensagem': 'Usuário atualizado com sucesso',
         'usuario': {
             'id': user['id'],
             'nome': user['nome'],
             'email': user['email'],
+            'is_admin': user['is_admin'],
         }
     }), 200
 
@@ -222,8 +235,8 @@ def promover_admin(user_id):
     return jsonify({'mensagem': 'Usuário promovido a administrador com sucesso'}), 200
 
 
-@app.route('/api/usuarios/<int:user_id>/rebogar', methods=['POST'])
-def rebogar_privilegios(user_id):
+@app.route('/api/usuarios/<int:user_id>/revogar', methods=['POST'])
+def revogar_privilegios(user_id):
     data = request.json
     admin_id = data.get('admin_id') if data else None
 
@@ -232,13 +245,16 @@ def rebogar_privilegios(user_id):
     if not admin:
         return jsonify({'erro': 'Admin não encontrado'}), 404
 
-    if is_main_admin(user):
-        return jsonify({'erro': 'Não é possível rebogar o administrador principal'}), 403
+    if not is_admin_user(admin) and not is_main_admin(admin):
+        return jsonify({'erro': 'Apenas admins podem revogar privilégios'}), 403
 
     user = next((u for u in users_db if u['id'] == user_id), None)
 
     if not user:
         return jsonify({'erro': 'Usuário não encontrado'}), 404
+
+    if is_main_admin(user):
+        return jsonify({'erro': 'Não é possível revogar o administrador principal'}), 403
 
     if not user['is_admin']:
         return jsonify({'erro': 'O usuário não é um administrador'}), 400
@@ -246,6 +262,33 @@ def rebogar_privilegios(user_id):
     user['is_admin'] = False
 
     return jsonify({'mensagem': 'Privilégios de admin removido com sucesso'}), 200
+
+
+@app.route('/api/estatisticas', methods=['GET'])
+def estatisticas():
+    hoje = datetime.now().date()
+    semana_atras = hoje - timedelta(days=6)
+
+    usuarios_por_dia = []
+    for i in range(7):
+        dia = semana_atras + timedelta(days=i)
+        quantidade = sum(
+            1 for u in users_db
+            if datetime.fromisoformat(u['data_criacao']).date() == dia
+        )
+        usuarios_por_dia.append({'dia': dia.strftime('%d/%m'), 'quantidade': quantidade})
+
+    novos_semana = sum(
+        1 for u in users_db
+        if datetime.fromisoformat(u['data_criacao']).date() >= semana_atras
+    )
+
+    return jsonify({
+        'total_usuarios': len(users_db),
+        'total_admins': sum(1 for u in users_db if u['is_admin']),
+        'novos_usuarios_semana': novos_semana,
+        'usuarios_por_dia': usuarios_por_dia,
+    }), 200
 
 
 @app.route('/api/auth/info', methods=['GET'])
@@ -268,3 +311,7 @@ def root():
 @app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'}), 200
+
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)

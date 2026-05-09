@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend } from 'chart.js';
+import {
+  Chart as ChartJS, CategoryScale, LinearScale,
+  PointElement, LineElement, BarElement, Title, Tooltip, Legend,
+} from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
 import axios from 'axios';
 import './Dashboard.css';
@@ -7,38 +10,33 @@ import { API_URL } from '../config/api';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
 
-function Dashboard({ usuario, onLogout, onUsuarioAtualizado }) {
+const CHART_OPTIONS = {
+  responsive: true,
+  plugins: { legend: { display: false } },
+  scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+};
+
+function Dashboard({ usuario, onLogout, onUsuarioAtualizado, notify }) {
   const [usuarios, setUsuarios] = useState([]);
   const [estatisticas, setEstatisticas] = useState(null);
   const [carregando, setCarregando] = useState(true);
-  const [mostrarSenha, setMostrarSenha] = useState(false);
-  const [usuarioEmEdicao, setUsuarioEmEdicao] = useState(null);
-  const [gerindoCargos, setGerindoCargos] = useState(false);
-  const [cargoSelecionado, setCargoSelecionado] = useState('usuario');
-  const [salvandoCargo, setSalvandoCargo] = useState(false);
+
   const [editandoPerfil, setEditandoPerfil] = useState(false);
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const [erroPerfil, setErroPerfil] = useState('');
-  const [perfilForm, setPerfilForm] = useState({
-    nome: usuario.nome,
-    email: usuario.email,
-    senha: usuario.senha || ''
-  });
+  const [perfilForm, setPerfilForm] = useState({ nome: usuario.nome, email: usuario.email, senha: '' });
+  const [mostrarSenha, setMostrarSenha] = useState(false);
 
-  useEffect(() => {
-    setPerfilForm({
-      nome: usuario.nome,
-      email: usuario.email,
-      senha: usuario.senha || ''
-    });
-  }, [usuario]);
+  const [usuarioEmEdicao, setUsuarioEmEdicao] = useState(null);
+  const [cargoSelecionado, setCargoSelecionado] = useState('usuario');
+  const [salvandoCargo, setSalvandoCargo] = useState(false);
+  const [confirmarDelecao, setConfirmarDelecao] = useState(false);
 
   const carregarDados = useCallback(async () => {
     try {
-      const headers = { 'X-User-Email': usuario.email };
       const [usuariosRes, estRes] = await Promise.all([
-        axios.get(`${API_URL}/usuarios`, { headers }),
-        axios.get(`${API_URL}/estatisticas`)
+        axios.get(`${API_URL}/usuarios`),
+        axios.get(`${API_URL}/estatisticas`),
       ]);
       setUsuarios(usuariosRes.data);
       setEstatisticas(estRes.data);
@@ -47,27 +45,27 @@ function Dashboard({ usuario, onLogout, onUsuarioAtualizado }) {
     } finally {
       setCarregando(false);
     }
-  }, [usuario.email]);
+  }, []);
 
   useEffect(() => {
     carregarDados();
   }, [carregarDados]);
 
-  const resetarFormularioPerfil = useCallback(() => {
+  useEffect(() => {
+    setPerfilForm({ nome: usuario.nome, email: usuario.email, senha: '' });
+  }, [usuario]);
+
+  const resetarPerfil = useCallback(() => {
+    setPerfilForm({ nome: usuario.nome, email: usuario.email, senha: '' });
     setErroPerfil('');
-    setPerfilForm({
-      nome: usuario.nome,
-      email: usuario.email,
-      senha: usuario.senha || ''
-    });
+    setMostrarSenha(false);
   }, [usuario]);
 
   const handlePerfilChange = (e) => {
     const { name, value } = e.target;
-    const sanitizedValue = name === 'senha' ? value.replace(/\s/g, '') : value;
-    setPerfilForm((prevForm) => ({
-      ...prevForm,
-      [name]: sanitizedValue
+    setPerfilForm(prev => ({
+      ...prev,
+      [name]: name === 'senha' ? value.replace(/\s/g, '') : value,
     }));
   };
 
@@ -75,36 +73,22 @@ function Dashboard({ usuario, onLogout, onUsuarioAtualizado }) {
     e.preventDefault();
     setErroPerfil('');
 
-    if (/\s/.test(perfilForm.senha)) {
-      setErroPerfil('A senha nao pode conter espacos em branco');
-      return;
-    }
-
-    if (perfilForm.senha.length < 4) {
+    if (perfilForm.senha && perfilForm.senha.length < 4) {
       setErroPerfil('A senha deve ter pelo menos 4 caracteres');
       return;
     }
 
     setSalvandoPerfil(true);
     try {
-      const response = await axios.put(`${API_URL}/usuarios/${usuario.id}`, {
-        nome: perfilForm.nome,
-        email: perfilForm.email,
-        senha: perfilForm.senha
-      }, {
-        headers: { 'X-User-Email': usuario.email }
-      });
+      const payload = { nome: perfilForm.nome, email: perfilForm.email };
+      if (perfilForm.senha) payload.senha = perfilForm.senha;
 
-      const usuarioAtualizado = {
-        ...usuario,
-        ...response.data.usuario,
-        senha: perfilForm.senha
-      };
-
+      const response = await axios.put(`${API_URL}/usuarios/${usuario.id}`, payload);
+      const usuarioAtualizado = { ...usuario, ...response.data.usuario };
       localStorage.setItem('usuario', JSON.stringify(usuarioAtualizado));
       onUsuarioAtualizado(usuarioAtualizado);
       setEditandoPerfil(false);
-      alert('Perfil atualizado com sucesso!');
+      notify('Perfil atualizado com sucesso!');
       carregarDados();
     } catch (err) {
       setErroPerfil(err.response?.data?.erro || 'Erro ao atualizar perfil');
@@ -113,320 +97,370 @@ function Dashboard({ usuario, onLogout, onUsuarioAtualizado }) {
     }
   };
 
-  const handleDeletarUsuario = async (userId) => {
-    if (!usuario.is_admin) {
-      alert('Apenas administradores podem deletar usuarios');
-      return;
-    }
-    if (window.confirm('Tem certeza que deseja deletar este usuario?')) {
-      try {
-        await axios.delete(`${API_URL}/usuarios/${userId}`, {
-          headers: { 'X-User-Email': usuario.email }
-        });
-        setUsuarios(usuarios.filter((user) => user.id !== userId));
-        setUsuarioEmEdicao(null);
-        alert('Usuario deletado com sucesso!');
-      } catch (err) {
-        alert('Erro ao deletar usuario');
-      }
-    }
-  };
-
   const abrirEdicaoUsuario = (user) => {
     setUsuarioEmEdicao(user);
-    setGerindoCargos(false);
     setCargoSelecionado(user.is_admin ? 'admin' : 'usuario');
+    setConfirmarDelecao(false);
+  };
+
+  const fecharModal = () => {
+    setUsuarioEmEdicao(null);
+    setConfirmarDelecao(false);
   };
 
   const handleAtualizarCargo = async () => {
-    if (!usuarioEmEdicao) {
-      return;
-    }
-
+    if (!usuarioEmEdicao) return;
     setSalvandoCargo(true);
     try {
       const response = await axios.put(
         `${API_URL}/usuarios/${usuarioEmEdicao.id}`,
         { is_admin: cargoSelecionado === 'admin' },
-        { headers: { 'X-User-Email': usuario.email } }
       );
-
-      const usuarioAtualizado = response.data.usuario;
-      setUsuarios((prevUsuarios) =>
-        prevUsuarios.map((user) =>
-          user.id === usuarioAtualizado.id ? { ...user, ...usuarioAtualizado } : user
-        )
-      );
-      setUsuarioEmEdicao((prevUsuario) => prevUsuario ? { ...prevUsuario, ...usuarioAtualizado } : prevUsuario);
-      setGerindoCargos(false);
-      alert('Cargo atualizado com sucesso!');
+      const atualizado = response.data.usuario;
+      setUsuarios(prev => prev.map(u => u.id === atualizado.id ? { ...u, ...atualizado } : u));
+      setUsuarioEmEdicao(prev => prev ? { ...prev, ...atualizado } : prev);
+      notify('Cargo atualizado com sucesso!');
     } catch (err) {
-      alert(err.response?.data?.erro || 'Erro ao atualizar cargo');
+      notify(err.response?.data?.erro || 'Erro ao atualizar cargo', 'erro');
     } finally {
       setSalvandoCargo(false);
     }
   };
 
+  const handleDeletarUsuario = async () => {
+    if (!usuarioEmEdicao) return;
+    try {
+      await axios.delete(`${API_URL}/usuarios/${usuarioEmEdicao.id}`);
+      setUsuarios(prev => prev.filter(u => u.id !== usuarioEmEdicao.id));
+      fecharModal();
+      notify('Usuário deletado com sucesso!');
+    } catch (err) {
+      notify(err.response?.data?.erro || 'Erro ao deletar usuário', 'erro');
+    }
+  };
+
   if (carregando) {
-    return <div className="dashboard-container"><p>Carregando...</p></div>;
+    return (
+      <div className="dashboard-loading">
+        <div className="spinner" />
+        <p>Carregando...</p>
+      </div>
+    );
   }
 
   const chartData = estatisticas ? {
-    labels: estatisticas.usuarios_por_dia.map((dado) => dado.dia),
+    labels: estatisticas.usuarios_por_dia.map(d => d.dia),
     datasets: [{
-      label: 'Usuarios por Dia',
-      data: estatisticas.usuarios_por_dia.map((dado) => dado.quantidade),
-      borderColor: 'rgb(75, 192, 192)',
-      backgroundColor: 'rgba(75, 192, 192, 0.2)',
-      tension: 0.1
-    }]
+      label: 'Cadastros',
+      data: estatisticas.usuarios_por_dia.map(d => d.quantidade),
+      borderColor: '#4f46e5',
+      backgroundColor: 'rgba(79, 70, 229, 0.08)',
+      tension: 0.4,
+      fill: true,
+    }],
   } : null;
 
   const barChartData = estatisticas ? {
-    labels: ['Total de Usuarios', 'Novos (Semana)'],
+    labels: ['Total de usuários', 'Novos (semana)'],
     datasets: [{
-      label: 'Estatisticas',
+      label: 'Estatísticas',
       data: [estatisticas.total_usuarios, estatisticas.novos_usuarios_semana],
-      backgroundColor: ['rgba(54, 162, 235, 0.7)', 'rgba(75, 192, 192, 0.7)'],
-      borderColor: ['rgb(54, 162, 235)', 'rgb(75, 192, 192)'],
-      borderWidth: 1
-    }]
+      backgroundColor: ['rgba(79, 70, 229, 0.7)', 'rgba(124, 58, 237, 0.7)'],
+      borderColor: ['#4f46e5', '#7c3aed'],
+      borderWidth: 2,
+      borderRadius: 8,
+    }],
   } : null;
 
   return (
-    <div className="dashboard-container">
+    <div className="dashboard">
+      {/* Modal gerenciar usuário */}
       {usuarioEmEdicao && (
-        <div className="edit-modal-overlay" onClick={() => setUsuarioEmEdicao(null)}>
-          <div className="edit-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="edit-modal-header">
-              <h3>Editar Usuario</h3>
-              <button
-                type="button"
-                className="edit-modal-close"
-                onClick={() => setUsuarioEmEdicao(null)}
-              >
-                Fechar
-              </button>
+        <div className="modal-overlay" onClick={fecharModal}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Gerenciar usuário</h3>
+              <button type="button" className="modal-close" onClick={fecharModal}>×</button>
             </div>
-            <div className="edit-modal-body">
-              <p className="edit-modal-user">
-                {usuarioEmEdicao.nome} ({usuarioEmEdicao.email})
-              </p>
-              <p className="edit-modal-role">
-                Cargo atual: {usuarioEmEdicao.is_admin ? 'admin' : 'usuario'}
-              </p>
-              <div className="edit-modal-options">
+            <div className="modal-body">
+              <div className="modal-user-info">
+                <p className="modal-user-name">{usuarioEmEdicao.nome}</p>
+                <p className="modal-user-email">{usuarioEmEdicao.email}</p>
+                <span className={`badge ${usuarioEmEdicao.is_admin ? 'badge-admin' : 'badge-user'}`}>
+                  {usuarioEmEdicao.is_admin ? 'Admin' : 'Usuário'}
+                </span>
+              </div>
+
+              <div className="modal-section">
+                <p className="modal-label">Cargo</p>
+                <div className="role-buttons">
+                  <button
+                    type="button"
+                    className={`role-btn ${cargoSelecionado === 'usuario' ? 'active' : ''}`}
+                    onClick={() => setCargoSelecionado('usuario')}
+                  >
+                    Usuário
+                  </button>
+                  <button
+                    type="button"
+                    className={`role-btn ${cargoSelecionado === 'admin' ? 'active' : ''}`}
+                    onClick={() => setCargoSelecionado('admin')}
+                  >
+                    Admin
+                  </button>
+                </div>
                 <button
                   type="button"
-                  className="edit-option-card"
-                  onClick={() => setGerindoCargos(!gerindoCargos)}
+                  className="btn-save-role"
+                  onClick={handleAtualizarCargo}
+                  disabled={
+                    salvandoCargo ||
+                    cargoSelecionado === (usuarioEmEdicao.is_admin ? 'admin' : 'usuario')
+                  }
                 >
-                  Gerir cargos
+                  {salvandoCargo ? 'Salvando...' : 'Salvar cargo'}
                 </button>
-                {gerindoCargos && (
-                  <div className="role-manager">
-                    <button
-                      type="button"
-                      className={`role-option-btn ${cargoSelecionado === 'admin' ? 'ativo' : ''}`}
-                      onClick={() => setCargoSelecionado('admin')}
-                    >
-                      admin
-                    </button>
-                    <button
-                      type="button"
-                      className={`role-option-btn ${cargoSelecionado === 'usuario' ? 'ativo' : ''}`}
-                      onClick={() => setCargoSelecionado('usuario')}
-                    >
-                      usuario
-                    </button>
-                    <button
-                      type="button"
-                      className="save-role-btn"
-                      onClick={handleAtualizarCargo}
-                      disabled={salvandoCargo}
-                    >
-                      {salvandoCargo ? 'Salvando...' : 'Salvar cargo'}
-                    </button>
+              </div>
+
+              <div className="modal-section modal-section-danger">
+                {confirmarDelecao ? (
+                  <div className="confirm-delete">
+                    <p>Tem certeza? Essa ação não pode ser desfeita.</p>
+                    <div className="confirm-delete-btns">
+                      <button type="button" className="btn-danger" onClick={handleDeletarUsuario}>
+                        Confirmar exclusão
+                      </button>
+                      <button type="button" className="btn-cancel" onClick={() => setConfirmarDelecao(false)}>
+                        Cancelar
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-danger-outline"
+                    onClick={() => setConfirmarDelecao(true)}
+                  >
+                    Deletar usuário
+                  </button>
                 )}
-                <button
-                  type="button"
-                  className="delete-btn edit-option-delete"
-                  onClick={() => handleDeletarUsuario(usuarioEmEdicao.id)}
-                >
-                  Deletar
-                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Header */}
       <header className="dashboard-header">
-        <h1>Bem-vindo, {usuario.nome}{usuario.is_admin ? ' (Administrador)' : ''}!</h1>
-        <button onClick={onLogout} className="logout-btn">Sair</button>
+        <div className="header-left">
+          <h1 className="header-title">Dashboard</h1>
+          <span className="header-user">
+            Olá, <strong>{usuario.nome}</strong>
+            {usuario.is_admin && <span className="header-badge">Admin</span>}
+          </span>
+        </div>
+        <button type="button" onClick={onLogout} className="btn-logout">Sair</button>
       </header>
 
-      <div className="dashboard-content">
+      <main className="dashboard-main">
         {editandoPerfil ? (
-          <section className="perfil-edit-page">
-            <div className="perfil-edit-header">
+          /* Sub-página editar perfil */
+          <div className="perfil-edit-page">
+            <div className="page-header">
               <div>
                 <h2>Editar Perfil</h2>
-                <p>Atualize seu nome de usuario, email e senha em uma subpagina dedicada.</p>
+                <p>Atualize suas informações pessoais</p>
               </div>
               <button
                 type="button"
-                className="perfil-back-btn"
-                onClick={() => {
-                  setEditandoPerfil(false);
-                  resetarFormularioPerfil();
-                }}
+                className="btn-back"
+                onClick={() => { setEditandoPerfil(false); resetarPerfil(); }}
               >
-                Voltar ao painel
+                Voltar
               </button>
             </div>
-
-            <form className="perfil-edit-form" onSubmit={handleAtualizarPerfil}>
-              <label>
-                Nome de usuario
-                <input
-                  type="text"
-                  name="nome"
-                  value={perfilForm.nome}
-                  onChange={handlePerfilChange}
-                  required
-                />
-              </label>
-
-              <label>
-                Email
-                <input
-                  type="email"
-                  name="email"
-                  value={perfilForm.email}
-                  onChange={handlePerfilChange}
-                  required
-                />
-              </label>
-
-              <label>
-                Senha
-                <div className="password-input-wrapper-edit">
+            <div className="edit-card">
+              <form onSubmit={handleAtualizarPerfil}>
+                <div className="edit-form-group">
+                  <label>Nome de usuário</label>
                   <input
-                    type={mostrarSenha ? 'text' : 'password'}
-                    name="senha"
-                    value={perfilForm.senha}
+                    type="text"
+                    name="nome"
+                    value={perfilForm.nome}
                     onChange={handlePerfilChange}
-                    minLength={4}
                     required
                   />
+                </div>
+                <div className="edit-form-group">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={perfilForm.email}
+                    onChange={handlePerfilChange}
+                    required
+                  />
+                </div>
+                <div className="edit-form-group">
+                  <label>
+                    Nova senha
+                    <span className="label-hint"> (deixe em branco para manter)</span>
+                  </label>
+                  <div className="edit-password-wrapper">
+                    <input
+                      type={mostrarSenha ? 'text' : 'password'}
+                      name="senha"
+                      value={perfilForm.senha}
+                      onChange={handlePerfilChange}
+                      placeholder="••••••••"
+                      minLength={perfilForm.senha ? 4 : undefined}
+                    />
+                    <button
+                      type="button"
+                      className={`edit-password-toggle ${!mostrarSenha ? 'oculta' : ''}`}
+                      onClick={() => setMostrarSenha(v => !v)}
+                    >
+                      <span className="edit-eye-icon" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+                {erroPerfil && <div className="form-erro">{erroPerfil}</div>}
+                <div className="edit-actions">
+                  <button type="submit" className="btn-save" disabled={salvandoPerfil}>
+                    {salvandoPerfil ? 'Salvando...' : 'Salvar alterações'}
+                  </button>
                   <button
                     type="button"
-                    className={`password-toggle-btn-edit ${!mostrarSenha ? 'oculta' : ''}`}
-                    onClick={() => setMostrarSenha(!mostrarSenha)}
-                    title={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                    className="btn-cancel"
+                    onClick={() => { setEditandoPerfil(false); resetarPerfil(); }}
                   >
-                    <span className="eye-icon-edit" aria-hidden="true" />
+                    Cancelar
                   </button>
                 </div>
-              </label>
-
-              <small className="perfil-edit-hint">
-                A senha deve ter pelo menos 4 caracteres e nao pode conter espacos.
-              </small>
-
-              {erroPerfil && <div className="erro">{erroPerfil}</div>}
-
-              <div className="perfil-edit-actions">
-                <button type="submit" disabled={salvandoPerfil}>
-                  {salvandoPerfil ? 'Salvando...' : 'Salvar alteracoes'}
-                </button>
-                <button
-                  type="button"
-                  className="perfil-cancel-btn"
-                  onClick={() => {
-                    setEditandoPerfil(false);
-                    resetarFormularioPerfil();
-                  }}
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          </section>
+              </form>
+            </div>
+          </div>
         ) : (
           <>
-            <section className="perfil-section">
-              <h2>Meu Perfil</h2>
-              <div className="perfil-info">
-                <p><strong>Nome:</strong> {usuario.nome}</p>
+            {/* Cards de estatísticas */}
+            {estatisticas && (
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <p className="stat-label">Total de usuários</p>
+                  <p className="stat-value">{estatisticas.total_usuarios}</p>
+                </div>
+                <div className="stat-card">
+                  <p className="stat-label">Administradores</p>
+                  <p className="stat-value">{estatisticas.total_admins}</p>
+                </div>
+                <div className="stat-card">
+                  <p className="stat-label">Novos esta semana</p>
+                  <p className="stat-value">{estatisticas.novos_usuarios_semana}</p>
+                </div>
               </div>
-              <button onClick={() => setEditandoPerfil(true)} className="edit-btn">Editar Perfil</button>
-            </section>
+            )}
 
-            <section className="graficos-section">
-              <h2>Estatisticas</h2>
-              <div className="graficos">
+            {/* Perfil */}
+            <div className="content-card">
+              <div className="card-header">
+                <h2>Meu Perfil</h2>
+                <button type="button" onClick={() => setEditandoPerfil(true)} className="btn-edit">
+                  Editar
+                </button>
+              </div>
+              <div className="perfil-info">
+                <div className="info-row">
+                  <span className="info-label">Nome</span>
+                  <span className="info-value">{usuario.nome}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-label">Email</span>
+                  <span className="info-value">{usuario.email}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-label">Cargo</span>
+                  <span className={`badge ${usuario.is_admin ? 'badge-admin' : 'badge-user'}`}>
+                    {usuario.is_admin ? 'Administrador' : 'Usuário'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Gráficos */}
+            <div className="content-card">
+              <div className="card-header">
+                <h2>Estatísticas</h2>
+                <span className="card-hint">dados reais do sistema</span>
+              </div>
+              <div className="charts-grid">
                 {chartData && (
-                  <div className="grafico">
-                    <h3>Usuarios por Dia</h3>
-                    <Line data={chartData} />
+                  <div className="chart-wrap">
+                    <h3>Cadastros por dia</h3>
+                    <Line data={chartData} options={CHART_OPTIONS} />
                   </div>
                 )}
                 {barChartData && (
-                  <div className="grafico">
-                    <h3>Resumo Geral</h3>
-                    <Bar data={barChartData} />
+                  <div className="chart-wrap">
+                    <h3>Resumo geral</h3>
+                    <Bar data={barChartData} options={CHART_OPTIONS} />
                   </div>
                 )}
               </div>
-              <p className="dados-ficticios-label">Dados ficticios</p>
-            </section>
+            </div>
 
+            {/* Tabela de usuários (admin only) */}
             {usuario.is_admin && (
-              <section className="usuarios-section">
-                <h2>Usuarios Cadastrados ({usuarios.length})</h2>
-                <table className="usuarios-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Nome</th>
-                      <th>Email</th>
-                      <th>Data de Criacao</th>
-                      <th>Acoes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usuarios.map((user) => (
-                      <tr key={user.id}>
-                        <td>{user.id}</td>
-                        <td>{user.nome}</td>
-                        <td>{user.email}</td>
-                        <td>{new Date(user.data_criacao).toLocaleDateString('pt-BR')}</td>
-                        <td>
-                          {user.id !== usuario.id && (
-                            <div className="action-buttons">
+              <div className="content-card">
+                <div className="card-header">
+                  <h2>Usuários cadastrados</h2>
+                  <span className="card-hint">{usuarios.length} no total</span>
+                </div>
+                <div className="table-wrap">
+                  <table className="usuarios-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Nome</th>
+                        <th>Email</th>
+                        <th>Cadastro</th>
+                        <th>Cargo</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usuarios.map(user => (
+                        <tr key={user.id}>
+                          <td className="td-id">{user.id}</td>
+                          <td>{user.nome}</td>
+                          <td>{user.email}</td>
+                          <td>{new Date(user.data_criacao).toLocaleDateString('pt-BR')}</td>
+                          <td>
+                            <span className={`badge ${user.is_admin ? 'badge-admin' : 'badge-user'}`}>
+                              {user.is_admin ? 'Admin' : 'Usuário'}
+                            </span>
+                          </td>
+                          <td>
+                            {user.id !== usuario.id && (
                               <button
                                 type="button"
-                                className="edit-row-btn"
+                                className="btn-table-edit"
                                 onClick={() => abrirEdicaoUsuario(user)}
                                 disabled={user.id === 0 && usuario.id !== 0}
                               >
                                 Editar
                               </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </>
         )}
-      </div>
+      </main>
     </div>
   );
 }
